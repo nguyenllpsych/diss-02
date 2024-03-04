@@ -16,10 +16,11 @@
 # I. META ----------------------------------------------------------------------
 
 # load libraries
-library(dplyr) # for general wrangling
-library(rio)   # for import export
-library(here)  # for directory management
-library(tidyr) # for reshaping to long
+library(dplyr)     # for general wrangling
+library(rio)       # for import export
+library(here)      # for directory management
+library(tidyr)     # for reshaping to long
+library(lubridate) # for working with date time
 
 # data paths
 log_path <- paste0(
@@ -53,7 +54,8 @@ log <- log %>%
   filter(!is.na(ESM_Number_P1) & !is.na(ESM_Number_P2)) %>%
   
   # select only relevant variables
-  select(Couple_ID, ESM_Number_P1, ESM_Number_P2, ESM_ID_P1, ESM_ID_P2) %>%
+  select(Couple_ID, ESM_Number_P1, ESM_Number_P2, ESM_ID_P1, ESM_ID_P2,
+         ESM_End) %>%
   
   # transform to long so each participant is a row
   gather(key = "variable", "value", ESM_Number_P1:ESM_ID_P2) %>%
@@ -64,10 +66,11 @@ log <- log %>%
   arrange(Couple_ID)%>%
   
   # create a participant_specific ID
-  mutate(Participant_ID = paste0(Couple_ID, "00", Participant)) %>%
+  mutate(Participant_ID = paste0(Couple_ID, "00", Participant),
+         Start_Date = as.Date(ESM_End) - 6) %>%
   
   # rearrange variables
-  select(Couple_ID, Participant_ID, ESM_Number, ESM_ID) %>%
+  select(Couple_ID, Participant_ID, Start_Date, ESM_Number, ESM_ID) %>%
   
   # ensure esm_id conforms to names standards
   mutate(ESM_ID = gsub(pattern = " ", replacement = "",
@@ -150,28 +153,37 @@ esm <- rio::import(esm_path, skip = 4) %>%
     # remove built-in "Score" variable from ExpiWell
     -V14)
 
+# merge in start date from log
+esm <- merge(esm, log %>% select(V10 = ESM_Number, Start_Date))
+
 # time variables
 #   enforce time format to survey start time
-esm$survey_time <- as.POSIXct(unlist(strsplit(esm$V1, " - "))
-                              [seq(from = 1, to = nrow(esm)*2, by = 2)], 
-                              format = "%m/%d/%Y %I:%M %p")
+esm$survey_time <- mdy_hm(esm$V1)
 
-#   time: hour minute second
-esm$time <- unlist(strsplit(as.character(
-  esm$survey_time), " "))[seq(from = 2, to = nrow(esm)*2, by = 2)]
+#   time: 0 -> 4
+#     0 = 9am, 1 = 12pm, 2 = 3pm, 3 = 6pm, 4 = 9pm
+#     ensure that if surveys were completed at the end of time frame
+#     would still have the same time stamp
+esm$time   <- format(esm$survey_time, "%H")
+wrong_time <- c("10", "13", "16", "19", "22")
+good_time  <- c("09", "12", "15", "18", "21")
+for(i in seq(wrong_time)){
+  esm$time[esm$time == wrong_time[i]] <- good_time[i]
+}
+esm$time   <- dense_rank(as.numeric(esm$time)) - 1
+
 #   day: month day year
-esm$day <- unlist(strsplit(as.character(
-  esm$survey_time), " "))[seq(from = 1, to = nrow(esm)*2, by = 2)]
-#   time indices: first ever to last ever survey instance starting from 0
-esm$time_idx <- as.numeric(ave(esm$V10, esm$V10, FUN = seq_along)) - 1
-#   day indices: first ever to last ever survey day starting from 0
-esm$day_idx <- ave(esm$day, esm$V10, FUN = function(x) {
-  as.numeric(factor(x, levels = unique(x))) - 1
-  })
+esm$day <- as.Date(esm$survey_time)
+
+#   day indices: first ever to last ever survey day starting from 0 -> 6
+esm$day_idx <- as.numeric(esm$day - esm$Start_Date)
+
+#   time indices: first ever to last ever survey instance starting from 0 -> 34
+esm$time_idx <- esm$time + 5 * esm$day_idx
 
 # rearrange variables
 esm <- esm %>%
-  select(V10, time:day_idx,
+  select(V10, time, day, time_idx, day_idx,
          V12:V29)
 
 # import names from dictionary

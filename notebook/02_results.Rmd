@@ -1,0 +1,303 @@
+---
+title: "Dynamic Assortative Mating - Analytic Results"
+author: "Linh Nguyen"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: 'hide'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library, results = 'hide', message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+options(digits = 3)
+
+libraries <- c("here",         # directory access
+               "psych",        # fisher's z
+               "Hmisc",        # correlation matrix
+               "rio",          # import export
+               "tidyr",        # long to wide
+               "forestplot",   # forest plot of actual vs perceived
+               "ggplot2",      # plots
+               "kableExtra",   # scroll box
+               "dplyr",        # general wrangling
+               "lavaan")       # APIM
+
+lapply(libraries, require, character.only = TRUE)
+
+bl_path   <- paste0(here(), "/data/2024-01-15/baseline_cleaned_2024-01-15.RDS")
+esm_path  <- paste0(here(), "/data/2024-01-15/esm_cleaned_2024-01-15.RDS")
+dict_path <- paste0(here(), "/data/dict.xlsx")
+
+source(paste0(here(), "/script/00_helpers.R"))
+```
+
+# Meta Data
+
+This is the analytic report for the Dynamic Assortative Mating paper.
+
+- Online access: This analytic report is published on [RPubs](https://rpubs.com/nguyenllpsych/esmdyad-results).
+- Preregistration document: [OSF](https://osf.io/t3gnh).
+- Descriptives and exploratory data analysis: [RPubs](https://rpubs.com/nguyenllpsych/esmdyad-eda).
+
+```{r dat}
+# load in data
+baseline <- rio::import(bl_path)
+esm <- rio::import(esm_path)
+dict <- rio::import(dict_path)
+
+# example data
+head(baseline) %>% 
+  knitr::kable(
+    caption = "Example first 6 rows of the baseline dataframe"
+  ) %>% 
+  kableExtra::kable_styling() %>%
+  scroll_box(height = "300px")
+
+head(esm %>% filter(Participant_ID == "1002001") %>% arrange(time_idx)) %>%
+  knitr::kable(caption = "Example first 6 rows of the esm dataframe") %>%
+  kable_styling() %>%
+  column_spec(4, width_min = "1in") %>%
+  scroll_box(width = "900px")
+
+# retain only analytic variables
+baseline <- baseline %>%
+  select(Couple_ID, P_num,
+         age, sex, gender, sexuality, edu, ses, politics, religion, race_cat,
+         panas_self_1:panas_self_20,
+         self_neuro:partner_opena)
+esm <- esm %>%
+  select(Couple_ID, P_num, time_idx, day_idx, mpa, mna, partner_presence,
+         tipi_extra:csi_short)
+```
+
+# Hypothesis 1: Baseline Assortative Mating
+
+#### At baseline, romantic partners are similar in their personality traits and general affects such that their scale scores are significantly and positively correlated.
+
+```{r h1}
+# run function
+h1_results <- h1_function(
+  var_list = c(paste0("self_", 
+                      c("pa", "na",
+                        "agree", "compa", "polit", 
+                        "consci", "indus", "order", 
+                        "extra", "assert", "enthu", 
+                        "neuro", "volat", "withd", 
+                        "open", "intel", "opena"))),
+  prof_list = data.frame(
+    pa      = dict %>% filter(scale == "Self Positive Affect") %>% pull(var),
+    na      = dict %>% filter(scale == "Self Negative Affect") %>% pull(var),
+    panas   = paste0("panas_self_", 1:20),
+    domains = paste0("self_", c("agree", "consci", "extra", "neuro", "open")),
+    aspects = paste0("self_", c("compa", "polit", "indus", "order", "assert",
+                                "enthu", "volat", "withd", "intel", "opena"))),
+  .data = baseline)
+
+# merge profile correlations back to dataframe
+baseline <- merge(baseline, h1_results$profile_df, all = TRUE)
+
+# print results
+h1_results$bivariate %>% 
+  knitr::kable(caption = "Bivariate between-partner correlation") %>% 
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+h1_results$profile %>% 
+  knitr::kable(
+    caption = "Proportion of signficant between-partner profile correlations") %>% 
+  kable_styling("striped")
+```
+
+# Hypothesis 2: Dynamic Assortative Mating
+
+#### Dynamically, romantic partners are similar in their momentary variability on personality and affective states.
+
+```{r h2}
+# run function
+h2_results <- h2_function(
+  var_list = c("mpa", "mna", 
+               paste0("tipi_", c("agree", "consci", "extra", "neuro", "open"))),
+  .data = esm,
+  .dict = dict
+)
+
+# merge within-person indices back to baseline dataframe
+baseline <- merge(baseline,
+                  h2_results$within_df)
+
+# show results
+h2_results$cor_tab %>% 
+  knitr::kable(
+    caption = "Dynamic Between-Partner Correlations") %>% 
+  kable_styling("striped") %>%
+  scroll_box(width = "900px")
+```
+
+# Hypothesis 3: Baseline Benefits
+
+#### At baseline, partner similarity in self-reported personality traits and general affect is associated with enhanced relationship quality
+
+```{r h3}
+# run function
+h3_results <- h3_function(
+  var_list = c(paste0("self_", 
+                      c("pa", "na",
+                        "agree", "compa", "polit", 
+                        "consci", "indus", "order", 
+                        "extra", "assert", "enthu", 
+                        "neuro", "volat", "withd", 
+                        "open", "intel", "opena"))),
+  prof_list = c("pa", "na", "panas", "domains", "aspects"),
+  quality_var = "csi_overall",
+  .data = baseline
+)
+
+# results
+h3_results$interaction_tab %>%
+  knitr::kable(
+    caption = "Multiple Regression Models with Interaction Effects"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+h3_results$difference_tab %>%
+  knitr::kable(
+    caption = "Simple Regression Model with Difference Score"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+h3_results$profile_tab %>%
+  knitr::kable(
+    caption = "Simple Regression Model with Profile Similarity"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+```
+
+# Hypothesis 4: Dynamic Benefits
+
+#### Dynamically, partner similarity in momentary variability on personality and affective states is associated with enhanced relationship quality.
+
+```{r h4}
+# run function 
+# same as h3 but without the profile argument
+h4_results <- h3_function(
+  var_list = baseline %>% select(mpa_sd:tipi_open_mssd) %>% names(),
+  quality_var = "csi_overall",
+  .data = baseline
+)
+
+# view results
+h4_results$interaction_tab %>%
+  knitr::kable(
+    caption = "Multiple Regression Models with Interaction Effects"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+h4_results$difference_tab %>%
+  knitr::kable(
+    caption = "Simple Regression Model with Difference Score"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+```
+
+# Hypothesis 5: APIM
+
+```{r h5, warning = F}
+# run function
+h5_results <- h5_function(
+  var_list = c("pa", "na",
+               "agree", "compa", "polit", 
+               "consci", "indus", "order", 
+               "extra", "assert", "enthu", 
+               "neuro", "volat", "withd", 
+               "open", "intel", "opena"),
+  quality_var = "csi_overall",
+  .data = baseline
+)
+
+# view results
+h5_results$actual %>%
+  knitr::kable(
+    caption = "Standardized solutions for APIM models with actual similarity"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+h5_results$perceived_p1 %>%
+  knitr::kable(
+    caption = "Standardized solutions for APIM models with P1-perceived similarity"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+h5_results$perceived_p2 %>%
+  knitr::kable(
+    caption = "Standardized solutions for APIM models with P2-perceived similarity"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+```
+
+# Hypothesis 6: Perceived vs. Actual
+
+#### At baseline, perceived similarity is stronger than actual similarity, and it is in turn more strongly associated with relationship quality
+
+```{r h6, fig.height = 10}
+# run function
+h6_results <- h6_function(
+  perception_list = c("pa", "na",
+                      "agree", "compa", "polit", 
+                      "consci", "indus", "order", 
+                      "extra", "assert", "enthu", 
+                      "neuro", "volat", "withd", 
+                      "open", "intel", "opena"),
+  .data = baseline
+)
+
+# view results
+h6_results$similarity_df %>%
+  knitr::kable(
+    caption = "Actual and perceived similarities as bivariate correlations"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+h6_results$compare_df %>%
+  knitr::kable(
+    caption = "Comparison between actual and perceived similarities"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+# plot
+similarity_df <- h6_results$similarity_df
+similarity_df$personality <- rep(
+  c(
+    "Positive Affect", "Negative Affect",
+    "Agreeableness", "Compassion", "Politeness",
+    "Conscientiousness", "Industriousness", "Orderliness",
+    "Extraversion", "Assertiveness", "Enthusiasm",
+    "Neuroticism", "Volatility", "Withdrawal",
+    "Openness", "Intellect", "Openness Aspect"),
+  each = 3)
+plot_forest(
+  perception_list = c("pa", "na",
+                      "agree", "compa", "polit", 
+                      "consci", "indus", "order", 
+                      "extra", "assert", "enthu", 
+                      "neuro", "volat", "withd", 
+                      "open", "intel", "opena"),
+  similarity_df = similarity_df)
+```
+

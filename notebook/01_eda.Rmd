@@ -1,0 +1,377 @@
+---
+title: "Dynamic Assortative Mating - Exploratory Data Analysis"
+author: "Linh Nguyen"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    code_folding: 'hide'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# I. Meta-Data
+
+In order to replicate this code file, the following files are needed in the directory `data/` found within the project directory: `dict.xlsx`, `2024-01-15/baseline_cleaned_2024-01-15.RDS`, `2024-01-15/esm_cleaned_2024-01-15.RDS`. R code associated with each code chunk can be viewed and hidden by toggling on `Code` on the top right of each output.
+
+```{r library, results = 'hide', message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+options(digits = 3)
+
+libraries <- c("apaTables",    # for cor table
+               "here",         # directory access
+               "psych",        # for scale alphas
+               "stringr",      # working with strings
+               "tidyr",        # pivot_wider
+               "forcats",      # fct_reorder for barplot
+               "rio",          # import export
+               "summarytools", # descriptives
+               "ggplot2",      # plots
+               "ggtext",       # element_markdown
+               "kableExtra",   # scroll box
+               "sjPlot",       # plot_grid
+               "dplyr")        # general wrangling
+
+lapply(libraries, require, character.only = TRUE)
+
+bl_path   <- paste0(here(), "/data/2024-01-15/baseline_cleaned_2024-01-15.RDS")
+esm_path  <- paste0(here(), "/data/2024-01-15/esm_cleaned_2024-01-15.RDS")
+dict_path <- paste0(here(), "/data/dict.xlsx")
+
+source(paste0(here(), "/script/00_helpers.R"))
+```
+
+```{r session-info, message = FALSE, warning = FALSE, results = "hold"}
+# list of loaded packages and versions
+si <- devtools::session_info()[[2]]
+rownames(si) <- NULL
+si <- as.data.frame(si)
+si %>% 
+  select(package, loadedversion, date, source) %>% 
+  knitr::kable(caption = "All loaded packages") %>%
+  kable_styling() %>% 
+  scroll_box(height = "300px")
+```
+
+```{r data}
+# load in data files
+baseline <- rio::import(bl_path)
+esm      <- rio::import(esm_path)
+dict     <- rio::import(dict_path)
+
+# create p_num
+baseline$P_num <- as.numeric(
+  substr(baseline$Participant_ID, 5, 8)
+)
+esm$P_num <- as.numeric(
+  substr(esm$Participant_ID, 5, 8)
+)
+
+# look at top few rows
+head(baseline) %>%
+  knitr::kable(caption = "Example baseline data") %>%
+  kable_styling() %>%
+  scroll_box(width = "900px")
+head(esm %>% filter(Participant_ID == "1002001") %>% arrange(time_idx)) %>%
+  knitr::kable(caption = "Example ESM data") %>%
+  kable_styling() %>%
+  column_spec(4, width_min = "1in") %>%
+  scroll_box(width = "900px")
+```
+
+# II. Baseline Data
+
+## 1. Scale Items and Labels
+
+```{r scales, results='asis'}
+# self-reported bfas domains and panas
+for(iscale in c("Agreeableness", "Conscientiousness",
+                "Extraversion", "Neuroticism", "Openness Domain",
+                "Positive Affect", "Negative Affect")) {
+  
+  # grab scale items in the dictionary
+  self_dict <- dict %>% 
+    filter(data == "baseline" &
+           scale == paste("Self", iscale)) %>%
+    select(var, var_label, value_label, subscale, key)
+  partner_dict <- dict %>% 
+    filter(data == "baseline" &
+           scale == paste("Partner", iscale))
+  
+  # calculate alpha
+  self_alpha <- round(
+    psych::alpha(baseline[self_dict$var])$total["raw_alpha"], 
+    2)
+  partner_alpha <- round(
+    psych::alpha(baseline[partner_dict$var])$total["raw_alpha"], 
+    2)
+  
+  # print dictionary
+  self_dict %>%
+    knitr::kable(caption = paste("Scale items for", iscale,
+                                 "- Cronbach's alpha self =", self_alpha,
+                                 "and partner =", partner_alpha)) %>%
+    kable_styling() %>%
+    scroll_box(height = "300px") %>%
+    print()
+}
+
+# csi
+# grab scale items in the dictionary
+current_dict <- dict %>% 
+  filter(data == "baseline" &
+         scale == "Relationship Quality") %>%
+  select(var, var_label, value_label, key)
+
+# calculate alpha
+current_alpha <- round(
+  psych::alpha(baseline[self_dict$var])$total["raw_alpha"], 
+  2)
+
+# print dictionary
+current_dict %>%
+  knitr::kable(caption = paste("Scale items for Relationship Quality",
+                               "- Cronbach's alpha =", current_alpha)) %>%
+  kable_styling() %>%
+  scroll_box(height = "300px")
+```
+
+## 2. Demographics
+
+```{r demo-descr}
+# continuous demographics
+baseline %>%
+  select(age, sex, duration) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of demographics for all participants") %>%
+  kable_styling()
+
+baseline %>%
+  filter(P_num == 1) %>%
+  select(age, sex, duration) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of demographics for first participants") %>%
+  kable_styling()
+baseline %>%
+  filter(P_num == 2) %>%
+  select(age, sex, duration) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of demographics for second participants") %>%
+  kable_styling()
+
+# categorical demographics
+dict %>%
+  filter(data == "baseline" &
+         var %in% c("sex", "gender", "race_cat", 
+                    "edu", "ses", "politics", "religion")) %>%
+  select(var, var_label, value_label) %>%
+  knitr::kable(caption = "Coding for categorical demographic variables") %>%
+  kable_styling()
+
+for(inum in c(1,2)){
+  print(paste("Participant", inum))
+  baseline %>%
+    filter(P_num == inum) %>%
+    select(gender, race_cat, edu, ses, politics, religion) %>%
+    freq() %>%
+    print()
+}
+```
+
+```{r demo-plots}
+p <- plot_hist(var = "age", 
+               var_name = "Age", 
+               data = baseline, bin_width = 1)
+
+if(signif(var = "age",
+          data = baseline)) {
+  p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
+  }
+print(p)
+
+p <- plot_hist(var = "duration", 
+               var_name = "Relationship Duration (in months)", 
+               data = baseline, bin_width = 10)
+
+if(signif(var = "duration",
+          data = baseline)) {
+  p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
+  }
+print(p)
+```
+
+## 3. Scale Scores
+
+```{r scale-descr}
+# BFAS self
+baseline %>%
+  select(all_of(paste0("self_", 
+                       c("agree", "consci", "extra", "neuro", "open")))) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of self-reported BFAS domains for all participants") %>%
+  kable_styling()
+
+baseline %>%
+  filter(P_num == 1) %>%
+  select(all_of(paste0("self_", 
+                       c("agree", "consci", "extra", "neuro", "open")))) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of self-reported BFAS domains for first participants") %>%
+  kable_styling()
+baseline %>%
+  filter(P_num == 2) %>%
+  select(all_of(paste0("self_", 
+                       c("agree", "consci", "extra", "neuro", "open")))) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of self-reported BFAS domains for second participants") %>%
+  kable_styling()
+
+# BFAS other
+baseline %>%
+  select(all_of(paste0("partner_", 
+                       c("agree", "consci", "extra", "neuro", "open")))) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of partner-reported BFAS domains for all participants") %>%
+  kable_styling()
+
+baseline %>%
+  filter(P_num == 1) %>%
+  select(all_of(paste0("partner_", 
+                       c("agree", "consci", "extra", "neuro", "open")))) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of partner-reported BFAS domains for first participants") %>%
+  kable_styling()
+baseline %>%
+  filter(P_num == 2) %>%
+  select(all_of(paste0("partner_", 
+                       c("agree", "consci", "extra", "neuro", "open")))) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of partner-reported BFAS domains for second participants") %>%
+  kable_styling()
+
+# PANAS
+baseline %>%
+  select(self_pa, partner_pa, self_na, partner_na) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of PANAS for all participants") %>%
+  kable_styling()
+
+baseline %>%
+  filter(P_num == 1) %>%
+  select(self_pa, partner_pa, self_na, partner_na) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of PANAS for first participants") %>%
+  kable_styling()
+baseline %>%
+  filter(P_num == 2) %>%
+  select(self_pa, partner_pa, self_na, partner_na) %>%
+  descr(stats = "common", order = "p") %>%
+  knitr::kable(caption = "Descriptives of PANAS for second participants") %>%
+  kable_styling()
+
+# csi
+csi_all <- descr(baseline$csi_overall, stats = "common", order = "p")
+csi_p1  <- descr(baseline[baseline$P_num == 1, "csi_overall"], 
+                          stats = "common", order = "p")
+csi_p2  <- descr(baseline[baseline$P_num == 2, "csi_overall"], 
+                          stats = "common", order = "p")
+csi_descr <- cbind(csi_all, csi_p1, csi_p2) %>%
+  as.data.frame()
+names(csi_descr) <- c("all", "P1", "P2")
+
+csi_descr %>%
+  knitr::kable(caption = "Descriptives of Relationship Quality") %>%
+  kable_styling()
+```
+
+```{r scale-plots}
+# BFAS and PANAS
+for(ivar in paste("Self", c("Agreeableness", "Conscientiousness", "Extraversion",
+                            "Neuroticism", "Openness Domain",
+                            "Positive Affect", "Negative Affect"))){
+  
+  # extract scale name from dict
+  var_name <- unique(dict[dict$scale == ivar, "scale_label"])
+  
+  # make plot
+  p <- plot_hist(var = var_name, 
+                 var_name = ivar, 
+                 data = baseline, bin_width = 0.1) +
+    xlim(1,5)
+
+  if(signif(var = var_name,
+            data = baseline)) {
+    p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
+  }
+  print(p)
+}
+
+# relationship quality plot
+p <- plot_hist(var = "csi_overall", 
+               var_name = "Relationship Quality", 
+               data = baseline, bin_width = 5)
+
+if(signif(var = "csi_overall",
+          data = baseline)) {
+  p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
+}
+print(p)
+```
+
+# III. ESM Data
+
+## 1. Scale Items and Labels
+
+```{r scales-esm, results='asis'}
+# tipi and csi
+for(iscale in c("Agreeableness", "Conscientiousness",
+                "Extraversion", "Neuroticism", "Openness",
+                "Relationship Quality")) {
+  
+  # grab scale items in the dictionary
+  current_dict <- dict %>% 
+    filter(data == "esm" &
+           scale == iscale) %>%
+    select(var, var_label, value_label, key)
+  
+  # grab the first time point for each participant
+  df_min <- merge(aggregate(time_idx ~ Participant_ID, data = esm, FUN = min),
+                  esm, by = c("Participant_ID", "time_idx"), all.x = TRUE)
+
+  # calculate alpha
+  current_alpha <- round(
+    psych::alpha(df_min[current_dict$var])$total["raw_alpha"], 
+    2)
+
+  # print dictionary
+  current_dict %>%
+    knitr::kable(caption = paste("Scale items for", iscale,
+                                 "- Cronbach's alpha =", current_alpha)) %>%
+    kable_styling() %>%
+    print()
+}
+
+# emotions
+dict %>%
+  filter(var %in% c("mpa", "mna")) %>%
+  select(var, var_label, value_label, scale) %>%
+  knitr::kable(caption = "Scale items for momentary affects") %>%
+  kable_styling()
+```
+
+## 2. Descriptives and plots
+
+```{r descr}
+esm %>%
+  select(tipi_agree, tipi_consci, tipi_extra, tipi_neuro, tipi_open,
+         csi_short, mpa, mna, partner_presence) %>%
+  descr(stat = "common", order = "p") %>%
+  knitr::kable() %>%
+  kable_styling()
+```
+
+#TODO: add descriptives for completion rates
