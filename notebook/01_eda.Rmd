@@ -160,7 +160,7 @@ baseline %>%
 # categorical demographics
 dict %>%
   filter(data == "baseline" &
-         var %in% c("sex", "gender", "race_cat", 
+         var %in% c("sex", "gender", "sexuality", "race_cat", 
                     "edu", "ses", "politics", "religion")) %>%
   select(var, var_label, value_label) %>%
   knitr::kable(caption = "Coding for categorical demographic variables") %>%
@@ -173,7 +173,7 @@ for(inum in c(1,2)){
   cat(paste("\n PARTICIPANT", inum, "\n"))
   baseline %>%
     filter(P_num == inum) %>%
-    select(gender, race_cat, edu, ses, politics, religion) %>%
+    select(gender, sexuality, race_cat, edu, ses, politics, religion) %>%
     freq() %>%
     print()
 }
@@ -239,6 +239,11 @@ if(signif(var = "religion",
           data = baseline)) {
   p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
   }
+print(p)
+
+p <- plot_hist(var = "sexuality", 
+               var_name = "Sexuality", 
+               data = baseline, bin_width = 0.1)
 print(p)
 ```
 
