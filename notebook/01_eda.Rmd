@@ -8,6 +8,7 @@ output:
     toc_depth: 4
     toc_float: true
     code_folding: 'hide'
+    css: styles.css
 ---
 
 ```{r setup, include=FALSE}
@@ -16,7 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # I. Meta-Data
 
-In order to replicate this code file, the following files are needed in the directory `data/` found within the project directory: `dict.xlsx`, `2024-01-15/baseline_cleaned_2024-01-15.RDS`, `2024-01-15/esm_cleaned_2024-01-15.RDS`. R code associated with each code chunk can be viewed and hidden by toggling on `Code` on the top right of each output.
+In order to replicate this code file, the following files are needed in the directory `data/` found within the project directory: `dict.xlsx`, `baseline_cleaned.RDS`, `esm_cleaned.RDS`. R code associated with each code chunk can be viewed and hidden by toggling on `Code` on the top right of each output.
 
 ```{r library, results = 'hide', message = FALSE, warning = FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
@@ -38,8 +39,8 @@ libraries <- c("apaTables",    # for cor table
 
 lapply(libraries, require, character.only = TRUE)
 
-bl_path   <- paste0(here(), "/data/2024-01-15/baseline_cleaned_2024-01-15.RDS")
-esm_path  <- paste0(here(), "/data/2024-01-15/esm_cleaned_2024-01-15.RDS")
+bl_path   <- paste0(here(), "/data/baseline_cleaned.RDS")
+esm_path  <- paste0(here(), "/data/esm_cleaned.RDS")
 dict_path <- paste0(here(), "/data/dict.xlsx")
 
 source(paste0(here(), "/script/00_helpers.R"))
@@ -62,14 +63,6 @@ si %>%
 baseline <- rio::import(bl_path)
 esm      <- rio::import(esm_path)
 dict     <- rio::import(dict_path)
-
-# create p_num
-baseline$P_num <- as.numeric(
-  substr(baseline$Participant_ID, 5, 8)
-)
-esm$P_num <- as.numeric(
-  substr(esm$Participant_ID, 5, 8)
-)
 
 # look at top few rows
 head(baseline) %>%
@@ -137,7 +130,8 @@ current_dict %>%
   knitr::kable(caption = paste("Scale items for Relationship Quality",
                                "- Cronbach's alpha =", current_alpha)) %>%
   kable_styling() %>%
-  scroll_box(height = "300px")
+  scroll_box(height = "300px") %>%
+  print()
 ```
 
 ## 2. Demographics
@@ -171,9 +165,12 @@ dict %>%
   select(var, var_label, value_label) %>%
   knitr::kable(caption = "Coding for categorical demographic variables") %>%
   kable_styling()
+```
 
+```{r demo-freq, results='asis'}
+# frequencies of categorical variables
 for(inum in c(1,2)){
-  print(paste("Participant", inum))
+  cat(paste("\n PARTICIPANT", inum, "\n"))
   baseline %>%
     filter(P_num == inum) %>%
     select(gender, race_cat, edu, ses, politics, religion) %>%
@@ -181,6 +178,7 @@ for(inum in c(1,2)){
     print()
 }
 ```
+
 
 ```{r demo-plots}
 p <- plot_hist(var = "age", 
@@ -198,6 +196,46 @@ p <- plot_hist(var = "duration",
                data = baseline, bin_width = 10)
 
 if(signif(var = "duration",
+          data = baseline)) {
+  p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
+  }
+print(p)
+
+p <- plot_hist(var = "ses", 
+               var_name = "Socioeconomic Status", 
+               data = baseline, bin_width = 0.1)
+
+if(signif(var = "ses",
+          data = baseline)) {
+  p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
+  }
+print(p)
+
+p <- plot_hist(var = "edu", 
+               var_name = "Education", 
+               data = baseline, bin_width = 0.1)
+
+if(signif(var = "edu",
+          data = baseline)) {
+  p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
+  }
+print(p)
+
+p <- plot_hist(var = "politics", 
+               var_name = "Political affiliation", 
+               data = baseline, bin_width = 0.1)
+
+if(signif(var = "politics",
+          data = baseline)) {
+  p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
+  }
+print(p)
+
+p <- plot_hist(var = "religion", 
+               var_name = "Religiosity", 
+               data = baseline, bin_width = 0.1)
+
+if(signif(var = "religion",
           data = baseline)) {
   p <- p + labs(subtitle = "Significant participant difference (p < 0.05)")
   }
@@ -288,6 +326,48 @@ csi_descr %>%
   kable_styling()
 ```
 
+```{r cormat, include = F}
+apa.cor.table(baseline %>% 
+                filter(P_num == 1) %>%
+                select(
+                  paste0("self_", 
+                      c("pa", "na",
+                        "agree", "compa", "polit", 
+                        "consci", "indus", "order", 
+                        "extra", "assert", "enthu", 
+                        "neuro", "volat", "withd", 
+                        "open", "intel", "opena")),
+                  paste0("partner_", 
+                      c("pa", "na",
+                        "agree", "compa", "polit", 
+                        "consci", "indus", "order", 
+                        "extra", "assert", "enthu", 
+                        "neuro", "volat", "withd", 
+                        "open", "intel", "opena"))
+                ),
+              filename = paste0(here(), "/results/cormat_p1.doc"))
+apa.cor.table(baseline %>% 
+                filter(P_num == 2) %>%
+                select(
+                  paste0("self_", 
+                      c("pa", "na",
+                        "agree", "compa", "polit", 
+                        "consci", "indus", "order", 
+                        "extra", "assert", "enthu", 
+                        "neuro", "volat", "withd", 
+                        "open", "intel", "opena")),
+                  paste0("partner_", 
+                      c("pa", "na",
+                        "agree", "compa", "polit", 
+                        "consci", "indus", "order", 
+                        "extra", "assert", "enthu", 
+                        "neuro", "volat", "withd", 
+                        "open", "intel", "opena"))
+                ),
+              filename = paste0(here(), "/results/cormat_p2.doc"))
+```
+
+
 ```{r scale-plots}
 # BFAS and PANAS
 for(ivar in paste("Self", c("Agreeableness", "Conscientiousness", "Extraversion",
@@ -366,12 +446,50 @@ dict %>%
 ## 2. Descriptives and plots
 
 ```{r descr}
+# create number of assessments completed
+esm_count <- as.data.frame(table(esm$Participant_ID)) %>%
+  rename(count = Freq) %>%
+  mutate(prop = count/35)
+esm_count$P_num <- as.numeric(
+  substr(esm_count$Var1, 5, 8)
+)
+total_count <- esm_count %>% select(count_total = count, prop_total = prop) %>% 
+  descr(stats="common")
+p1_count <- esm_count %>% filter(P_num == 1) %>% 
+  select(count_p1 = count, prop_p1 = prop) %>% descr(stats="common")
+p2_count <- esm_count %>% filter(P_num == 2) %>%
+  select(count_p2 = count, prop_p2 = prop) %>% descr(stats="common")
+cbind(total_count, p1_count, p2_count) %>%
+  knitr::kable(
+    caption = "Completion Rates for All Participants and First/Second Participants"
+  ) %>%
+  kable_styling()
+
+# descriptives of scale scores
 esm %>%
   select(tipi_agree, tipi_consci, tipi_extra, tipi_neuro, tipi_open,
          csi_short, mpa, mna, partner_presence) %>%
   descr(stat = "common", order = "p") %>%
-  knitr::kable() %>%
+  knitr::kable(
+    caption = "ESM Descriptives for All Participants"
+  ) %>%
+  kable_styling()
+esm %>%
+  filter(P_num == 1) %>%
+  select(tipi_agree, tipi_consci, tipi_extra, tipi_neuro, tipi_open,
+         csi_short, mpa, mna, partner_presence) %>%
+  descr(stat = "common", order = "p") %>%
+  knitr::kable(
+    caption = "ESM Descriptives for First Participants"
+  ) %>%
+  kable_styling()
+esm %>%
+  filter(P_num == 2) %>%
+  select(tipi_agree, tipi_consci, tipi_extra, tipi_neuro, tipi_open,
+         csi_short, mpa, mna, partner_presence) %>%
+  descr(stat = "common", order = "p") %>%
+  knitr::kable(
+    caption = "ESM Descriptives for Second Participants"
+  ) %>%
   kable_styling()
 ```
-
-#TODO: add descriptives for completion rates

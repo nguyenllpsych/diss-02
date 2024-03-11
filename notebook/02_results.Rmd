@@ -19,6 +19,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 options(digits = 3)
 
 libraries <- c("here",         # directory access
+               "rties",        # coupled damped oscillator
                "psych",        # fisher's z
                "Hmisc",        # correlation matrix
                "rio",          # import export
@@ -31,8 +32,8 @@ libraries <- c("here",         # directory access
 
 lapply(libraries, require, character.only = TRUE)
 
-bl_path   <- paste0(here(), "/data/2024-01-15/baseline_cleaned_2024-01-15.RDS")
-esm_path  <- paste0(here(), "/data/2024-01-15/esm_cleaned_2024-01-15.RDS")
+bl_path   <- paste0(here(), "/data/baseline_cleaned.RDS")
+esm_path  <- paste0(here(), "/data/esm_cleaned.RDS")
 dict_path <- paste0(here(), "/data/dict.xlsx")
 
 source(paste0(here(), "/script/00_helpers.R"))
@@ -77,7 +78,9 @@ esm <- esm %>%
          tipi_extra:csi_short)
 ```
 
-# Hypothesis 1: Baseline Assortative Mating
+# Research Question 1: Evidence of Assortative Mating 
+
+## Hypothesis 1: Baseline Assortative Mating
 
 #### At baseline, romantic partners are similar in their personality traits and general affects such that their scale scores are significantly and positively correlated.
 
@@ -115,38 +118,92 @@ h1_results$profile %>%
   kable_styling("striped")
 ```
 
-# Hypothesis 2: Dynamic Assortative Mating
+## Hypothesis 2: Perceived vs. Actual
+
+#### At baseline, perceived similarity is stronger than actual similarity
+
+```{r h2, fig.height = 10}
+# run function
+h2_results <- h2_function(
+  perception_list = c("pa", "na",
+                      "agree", "compa", "polit", 
+                      "consci", "indus", "order", 
+                      "extra", "assert", "enthu", 
+                      "neuro", "volat", "withd", 
+                      "open", "intel", "opena"),
+  .data = baseline
+)
+
+# view results
+h2_results$similarity_df %>%
+  knitr::kable(
+    caption = "Actual and perceived similarities as bivariate correlations"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+h2_results$compare_df %>%
+  knitr::kable(
+    caption = "Comparison between actual and perceived similarities"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+
+# plot
+similarity_df <- h2_results$similarity_df
+similarity_df$personality <- rep(
+  c(
+    "Positive Affect", "Negative Affect",
+    "Agreeableness", "Compassion", "Politeness",
+    "Conscientiousness", "Industriousness", "Orderliness",
+    "Extraversion", "Assertiveness", "Enthusiasm",
+    "Neuroticism", "Volatility", "Withdrawal",
+    "Openness", "Intellect", "Openness Aspect"),
+  each = 3)
+plot_forest(
+  perception_list = c("pa", "na",
+                      "agree", "compa", "polit", 
+                      "consci", "indus", "order", 
+                      "extra", "assert", "enthu", 
+                      "neuro", "volat", "withd", 
+                      "open", "intel", "opena"),
+  similarity_df = similarity_df)
+```
+
+## Hypothesis 3: Dynamic Assortative Mating
 
 #### Dynamically, romantic partners are similar in their momentary variability on personality and affective states.
 
-```{r h2}
+```{r h3, warning = F}
 # run function
-h2_results <- h2_function(
+h3_results <- h3_function(
   var_list = c("mpa", "mna", 
                paste0("tipi_", c("agree", "consci", "extra", "neuro", "open"))),
   .data = esm,
-  .dict = dict
+  .dict = dict %>% filter(data == "esm")
 )
 
 # merge within-person indices back to baseline dataframe
 baseline <- merge(baseline,
-                  h2_results$within_df)
+                  h3_results$within_df)
 
 # show results
-h2_results$cor_tab %>% 
+h3_results$cor_tab %>% 
   knitr::kable(
     caption = "Dynamic Between-Partner Correlations") %>% 
   kable_styling("striped") %>%
   scroll_box(width = "900px")
 ```
 
-# Hypothesis 3: Baseline Benefits
+# Research Question 2: Benefits of Assortative Mating
+
+## Hypothesis 4: Baseline Benefits
 
 #### At baseline, partner similarity in self-reported personality traits and general affect is associated with enhanced relationship quality
 
-```{r h3}
+```{r h4}
 # run function
-h3_results <- h3_function(
+h4_results <- h4_function(
   var_list = c(paste0("self_", 
                       c("pa", "na",
                         "agree", "compa", "polit", 
@@ -160,43 +217,6 @@ h3_results <- h3_function(
 )
 
 # results
-h3_results$interaction_tab %>%
-  knitr::kable(
-    caption = "Multiple Regression Models with Interaction Effects"
-  ) %>%
-  kable_styling("striped") %>%
-  scroll_box(height = "300px")
-
-h3_results$difference_tab %>%
-  knitr::kable(
-    caption = "Simple Regression Model with Difference Score"
-  ) %>%
-  kable_styling("striped") %>%
-  scroll_box(height = "300px")
-
-h3_results$profile_tab %>%
-  knitr::kable(
-    caption = "Simple Regression Model with Profile Similarity"
-  ) %>%
-  kable_styling("striped") %>%
-  scroll_box(height = "300px")
-
-```
-
-# Hypothesis 4: Dynamic Benefits
-
-#### Dynamically, partner similarity in momentary variability on personality and affective states is associated with enhanced relationship quality.
-
-```{r h4}
-# run function 
-# same as h3 but without the profile argument
-h4_results <- h3_function(
-  var_list = baseline %>% select(mpa_sd:tipi_open_mssd) %>% names(),
-  quality_var = "csi_overall",
-  .data = baseline
-)
-
-# view results
 h4_results$interaction_tab %>%
   knitr::kable(
     caption = "Multiple Regression Models with Interaction Effects"
@@ -210,9 +230,16 @@ h4_results$difference_tab %>%
   ) %>%
   kable_styling("striped") %>%
   scroll_box(height = "300px")
+
+h4_results$profile_tab %>%
+  knitr::kable(
+    caption = "Simple Regression Model with Profile Similarity"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
 ```
 
-# Hypothesis 5: APIM
+## Hypothesis 5: APIM Actual Similarities
 
 ```{r h5, warning = F}
 # run function
@@ -249,55 +276,230 @@ h5_results$perceived_p2 %>%
   scroll_box(height = "300px")
 ```
 
-# Hypothesis 6: Perceived vs. Actual
+## Hypothesis 6: APIM Perceived Similarities
 
-#### At baseline, perceived similarity is stronger than actual similarity, and it is in turn more strongly associated with relationship quality
+```{r h6, warning = F}
+# output included in h5_function
+h5_results$perceived_p1 %>%
+  knitr::kable(
+    caption = "Standardized solutions for APIM models with P1-perceived similarity"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+h5_results$perceived_p2 %>%
+  knitr::kable(
+    caption = "Standardized solutions for APIM models with P2-perceived similarity"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+```
 
-```{r h6, fig.height = 10}
-# run function
-h6_results <- h6_function(
-  perception_list = c("pa", "na",
-                      "agree", "compa", "polit", 
-                      "consci", "indus", "order", 
-                      "extra", "assert", "enthu", 
-                      "neuro", "volat", "withd", 
-                      "open", "intel", "opena"),
+## Hypothesis 7: Dynamic Benefits
+
+#### Dynamically, partner similarity in momentary variability on personality and affective states is associated with enhanced relationship quality.
+
+```{r h7}
+# run function 
+# same as h4 but without the profile argument
+h7_results <- h4_function(
+  var_list = apply(expand.grid(
+    c("mpa", "mna", 
+      "tipi_agree", "tipi_consci", "tipi_extra", "tipi_neuro", "tipi_open"),
+    c("_sd", "_rvi", "_mssd")), 1, paste, collapse = ""),
+  quality_var = "csi_overall",
   .data = baseline
 )
 
+### z-correlation as predictors ###
+fluctuation_tab <- data.frame()
+
+# sort data
+fluctuation_dat <- baseline %>% arrange(Couple_ID)
+
+#   extract vector of each partner score on relationship quality variables
+p1_qual <- fluctuation_dat[fluctuation_dat$P_num == 1, "csi_overall", drop = T]
+p2_qual <- fluctuation_dat[fluctuation_dat$P_num == 2, "csi_overall", drop = T]
+
+for(ivar in paste0(
+  c("mpa", "mna", 
+    "tipi_agree", "tipi_consci", "tipi_extra", "tipi_neuro", "tipi_open"),
+  "_z")) {
+  
+  # extract vector of fisher's z-transformed within-couple correlation
+  #   same for both participants, use P_num = 1 to avoid duplication
+  z_var <- fluctuation_dat[fluctuation_dat$P_num == 1, ivar, drop = T]
+  
+  # fit simple regression models
+  mod_1 <- summary(lm(p1_qual ~ z_var))$coefficients
+  mod_2 <- summary(lm(p2_qual ~ z_var))$coefficients
+  
+  # extract coefficients
+  z_1   <- round(mod_1["z_var", 
+                       c("Estimate", "t value", "Pr(>|t|)")], 3)
+  z_2   <- round(mod_2["z_var", 
+                       c("Estimate", "t value", "Pr(>|t|)")], 3)
+  
+  # store values in difference_tab
+  fluctuation_tab <- rbind(
+    fluctuation_tab,
+    
+    # first partner
+    c(ivar, "P1", z_1),
+    
+    # second partner
+    c(ivar, "P2", z_2)
+    )
+} # END for ivar LOOP
+
+#   rename results table
+names(fluctuation_tab) <- c("personality", "participant",
+                            "z_est", "z_tval", "z_pval")
+
 # view results
-h6_results$similarity_df %>%
+h7_results$interaction_tab %>%
   knitr::kable(
-    caption = "Actual and perceived similarities as bivariate correlations"
+    caption = "Multiple Regression Models with Interaction Effects"
   ) %>%
   kable_styling("striped") %>%
   scroll_box(height = "300px")
 
-h6_results$compare_df %>%
+h7_results$difference_tab %>%
   knitr::kable(
-    caption = "Comparison between actual and perceived similarities"
+    caption = "Simple Regression Model with Difference Score"
   ) %>%
   kable_styling("striped") %>%
   scroll_box(height = "300px")
 
-# plot
-similarity_df <- h6_results$similarity_df
-similarity_df$personality <- rep(
-  c(
-    "Positive Affect", "Negative Affect",
-    "Agreeableness", "Compassion", "Politeness",
-    "Conscientiousness", "Industriousness", "Orderliness",
-    "Extraversion", "Assertiveness", "Enthusiasm",
-    "Neuroticism", "Volatility", "Withdrawal",
-    "Openness", "Intellect", "Openness Aspect"),
-  each = 3)
-plot_forest(
-  perception_list = c("pa", "na",
-                      "agree", "compa", "polit", 
-                      "consci", "indus", "order", 
-                      "extra", "assert", "enthu", 
-                      "neuro", "volat", "withd", 
-                      "open", "intel", "opena"),
-  similarity_df = similarity_df)
+fluctuation_tab %>%
+  knitr::kable(
+    caption = "Simple Regression Model with Fluctuations"
+  ) %>%
+  kable_styling("striped") %>%
+  scroll_box(height = "300px")
+```
+
+# Exploratory Model: Coupled Damped Oscillator
+
+```{r rties}
+# make sure all time points are present
+template <- expand.grid(Couple_ID = unique(esm$Couple_ID),
+                        P_num = 1:2,
+                        time_idx = 0:34)
+
+# left join the template with esm so all missing rows are present
+rties_dat <- left_join(template, esm, by = c("Couple_ID", "P_num", "time_idx"))
+
+# drop duplicates if any
+rties_dat <- rties_dat[!duplicated(rties_dat), ]
+
+# prep data according to rties instructions
+rties_dat$couple <- rties_dat$Couple_ID - 1000
+rties_dat$person <- ifelse(rties_dat$P_num == 1, 
+                           rties_dat$couple, rties_dat$couple + 500)
+
+# remove duplicated data at same time_idx
+rties_dat <- rties_dat[!duplicated(rties_dat[c("Couple_ID", "P_num", "time_idx")])| 
+                        duplicated(rties_dat[c("Couple_ID", "P_num", "time_idx")], 
+                                   fromLast = TRUE), ]
+
+# fix time_idx to start at 1
+rties_dat$time_idx <- rties_dat$time_idx + 1
+
+# use rties::dataPrep()
+prepped_dat <- dataPrep(basedata = rties_dat, 
+                        dyadId = "couple", personId = "person",
+                        obs_name = "tipi_neuro", dist_name = "P_num",
+                        time_name = "time_idx")
+
+
+## test taus, embeds, and delta
+## not successful
+#taus <- c(4,5)
+#embeds <- c(3,4,5)
+#delta <- 1
+#
+#derivs <- estDerivs(prepData=prepped_dat, taus=taus, embeds=embeds, delta=delta, 
+#                    idConvention=500)
+
+# random selection of couples with at least 28 shared datapoints
+set.seed(202403)
+id_list <- baseline %>% filter(tipi_open_n > 28) %>%
+  pull(Couple_ID) %>%
+  unique()
+id_random <- sample(id_list, size = 9)
+
+# update time to hour unit
+old_time <- 1:35
+new_time <- c(seq(from = 0, to = 12, by = 3),
+              seq(from = 0, to = 12, by = 3)+24*1,
+              seq(from = 0, to = 12, by = 3)+24*2,
+              seq(from = 0, to = 12, by = 3)+24*3,
+              seq(from = 0, to = 12, by = 3)+24*4,
+              seq(from = 0, to = 12, by = 3)+24*5,
+              seq(from = 0, to = 12, by = 3)+24*6)
+rties_dat$new_time <- NA
+for (i in seq_along(old_time)) {
+  # Update the corresponding value in time with the value from new_time
+  rties_dat$new_time[rties_dat$time_idx == old_time[i]] <- new_time[i]
+}
+rties_dat$time_idx <- rties_dat$new_time
+
+# plot random couples
+plot_timeseries(basedata=rties_dat %>% filter(Couple_ID %in% id_random), 
+                dyad="couple", 
+                obs_name="mna", 
+                dist_name="P_num", 
+                time_name="time_idx", 
+                dist0name="P2", dist1name= "P1", 
+                plot_obs_name="Negative Affect", printPlots = F)
+plot_timeseries(basedata=rties_dat %>% filter(Couple_ID %in% id_random), 
+                dyad="couple", 
+                obs_name="mpa", 
+                dist_name="P_num", 
+                time_name="time_idx", 
+                dist0name="P2", dist1name= "P1", 
+                plot_obs_name="Positive Affect", printPlots = F)
+plot_timeseries(basedata=rties_dat %>% filter(Couple_ID %in% id_random), 
+                dyad="couple", 
+                obs_name="tipi_agree", 
+                dist_name="P_num", 
+                time_name="time_idx", 
+                dist0name="P2", dist1name= "P1", 
+                plot_obs_name="Agreeableness", printPlots = F)
+plot_timeseries(basedata=rties_dat %>% filter(Couple_ID %in% id_random), 
+                dyad="couple", 
+                obs_name="tipi_consci", 
+                dist_name="P_num", 
+                time_name="time_idx", 
+                dist0name="P2", dist1name= "P1", 
+                plot_obs_name="Conscientiousness", printPlots = F)
+plot_timeseries(basedata=rties_dat %>% filter(Couple_ID %in% id_random), 
+                dyad="couple", 
+                obs_name="tipi_extra", 
+                dist_name="P_num", 
+                time_name="time_idx", 
+                dist0name="P2", dist1name= "P1", 
+                plot_obs_name="Extraversion", printPlots = F)
+plot_timeseries(basedata=rties_dat %>% filter(Couple_ID %in% id_random), 
+                dyad="couple", 
+                obs_name="tipi_neuro", 
+                dist_name="P_num", 
+                time_name="time_idx", 
+                dist0name="P2", dist1name= "P1", 
+                plot_obs_name="Neuroticism", printPlots = F)
+plot_timeseries(basedata=rties_dat %>% filter(Couple_ID %in% id_random), 
+                dyad="couple", 
+                obs_name="tipi_open", 
+                dist_name="P_num", 
+                time_name="time_idx", 
+                dist0name="P2", dist1name= "P1", 
+                plot_obs_name="Openness", printPlots = F)
+plot_timeseries(basedata=rties_dat %>% filter(Couple_ID %in% id_random), 
+                dyad="couple", 
+                obs_name="csi_short", 
+                dist_name="P_num", 
+                time_name="time_idx", 
+                dist0name="P2", dist1name= "P1", 
+                plot_obs_name="Relationship Satisfaction", printPlots = F)
 ```
 

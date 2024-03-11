@@ -54,8 +54,7 @@ h1_function <- function(
   }
   
   ### PROFILE CORRELATIONS ###
-  ### FOR ALL WAVES ###
-  
+
   # initialize profile cor table
   prof_tab <- data.frame()
   
@@ -69,33 +68,63 @@ h1_function <- function(
     
     # variable names for each participant
     var_list <- unique(paste0(prof_list[, profile]))
-    
-    # extract vectors from data
+
+    # extract raw vectors from data
     p1 <- .data %>%
       filter(P_num == 1) %>%
       select(all_of(var_list))
     p2 <- .data %>%
       filter(P_num == 2) %>%
       select(all_of(var_list))
-    
+
+    # compute gender-centered and standardized data
+    centered_df <- std_df <- data.frame(
+      P_num = rep(1:2, times = length(unique(.data$Couple_ID)))
+    )
+    for(ivar in var_list){
+      male_mean   <- mean(.data[.data$sex == 0, ivar], na.rm=T)
+      female_mean <- mean(.data[.data$sex == 1, ivar], na.rm=T)
+      male_sd     <- sd(.data[.data$sex == 0, ivar], na.rm=T)
+      female_sd   <- sd(.data[.data$sex == 1, ivar], na.rm=T)
+      tmp <- .data %>%
+        mutate(
+          centered = case_when(
+            sex == 0 ~ (!!sym(ivar) - male_mean),
+            sex == 1 ~ (!!sym(ivar) - female_mean)),
+          std = case_when(
+            sex == 0 ~ (!!sym(ivar) - male_mean)/male_sd,
+            sex == 1 ~ (!!sym(ivar) - female_mean)/female_sd)
+          )
+      centered_df <- cbind(centered_df, tmp %>% select(centered))
+      names(centered_df)[names(centered_df) == "centered"] <- ivar
+      std_df <- cbind(std_df, tmp %>% select(std))
+      names(std_df)[names(std_df) == "std"] <- ivar
+    } # END for ivar loop
+
+    #extract centered and std dataframes for p1 and p2
+    p1_centered <- centered_df %>% filter(P_num == 1) %>%
+      select(all_of(var_list))
+    p2_centered <- centered_df %>% filter(P_num == 2) %>%
+      select(all_of(var_list))
+    p1_std <- std_df %>% filter(P_num == 1) %>%
+      select(all_of(var_list))
+    p2_std <- std_df %>% filter(P_num == 2) %>%
+      select(all_of(var_list))
+        
     # RAW profile correlations
     raw   <- Hmisc::rcorr(t(p1), t(p2), type = "pearson")
     raw_r <- diag(raw$r[c(1:nrow(p1)), c((nrow(p1)+1):(nrow(p1)*2))])
     raw_p <- diag(raw$P[c(1:nrow(p1)), c((nrow(p1)+1):(nrow(p1)*2))])
     
-    # P1-MEAN-CENTERED profile correlations
-    p1_centered <- scale(p1, center = TRUE, scale = FALSE)
-    p2_centered <- scale(p2, center = TRUE, scale = FALSE)
+    # GENDER-MEAN-CENTERED profile correlations
     centered   <- Hmisc::rcorr(t(p1_centered), t(p2_centered), type = "pearson")
     centered_r <- diag(centered$r[c(1:nrow(p1)), 
                                   c((nrow(p1)+1):(nrow(p1)*2))])
     centered_p <- diag(centered$P[c(1:nrow(p1)), 
                                   c((nrow(p1)+1):(nrow(p1)*2))])
     
-    # STANDARDIZED profile correlations
-    p1_std <- scale(p1, center = TRUE, scale = TRUE)
-    p2_std <- scale(p2, center = TRUE, scale = TRUE)
-    std    <- Hmisc::rcorr(t(p1_std), t(p2_std), type = "pearson")
+    # GENDER-STANDARDIZED profile correlations
+    std   <- Hmisc::rcorr(t(p1_std), t(p2_std), type = "pearson")
     std_r <- diag(std$r[c(1:nrow(p1)), c((nrow(p1)+1):(nrow(p1)*2))])
     std_p <- diag(std$P[c(1:nrow(p1)), c((nrow(p1)+1):(nrow(p1)*2))])
     
@@ -145,8 +174,130 @@ h1_function <- function(
 } # END h1_function
 
 
-## Hypothesis 2: Dynamic Assortment --------------------------------------------
+## Hypothesis 2: Perceived vs. Actual ------------------------------------------
 h2_function <- function(
+  # character vector of all personality variables with self/other reports
+  #   naming convention: self_var and partner_var
+  perception_list,
+  
+  # analytic dataframe
+  .data) {
+  
+  # create dataframes to store results
+  #   similarity_df: raw actual and perceived similarity
+  #   compare_df: comparison between actual and perceived similarity
+  similarity_df <- compare_df <- data.frame()
+  
+  # sort data to make sure couple id align
+  .data <- .data %>%
+    arrange(Couple_ID)
+  
+  # loop through self/other variables
+  for (var in perception_list) {
+    
+    # extract vectors from data
+    #   p1self:    P1's self-perception
+    #   p1partner: P1's perception of their partner
+    #   p2self:    P2's self-perception
+    #   p2partner: P2's perception of their partner
+    p1self    <- .data[.data$P_num == 1, paste0("self_", var), drop = T]
+    p1partner <- .data[.data$P_num == 1, paste0("partner_", var), drop = T]
+    p2self    <- .data[.data$P_num == 2, paste0("self_", var), drop = T]
+    p2partner <- .data[.data$P_num == 2, paste0("partner_", var), drop = T]
+    
+    # compute correlation and p-value
+    #   actual_sim: between both partners' self-reports
+    #   perceived_sim_p1: P1's self perception and 
+    #                     P1's perception of P2
+    #   perceived_sim_p2: P2's self perception and 
+    #                     P2's perception of P1
+    actual_sim <- cor.test(p1self, p2self, method = "pearson",
+                           alternative = "two.sided")    
+    perceived_sim_p1 <- cor.test(p1self, p1partner, method = "pearson",
+                                 alternative = "two.sided")    
+    perceived_sim_p2 <- cor.test(p2self, p2partner, method = "pearson",
+                                 alternative = "two.sided")    
+    # store cor, ci, pval
+    similarity_df <- rbind(
+      similarity_df,
+      # actual sim
+      c("actual", var, 
+        paste0(round(actual_sim$estimate, 3),
+               " [", round(actual_sim$conf.int[1], 3),
+               " - ", 
+               round(actual_sim$conf.int[2], 3) ,"]"),
+        round(actual_sim$p.value, 3)),
+      c("P1-perceived", var,
+        paste0(round(perceived_sim_p1$estimate, 3),
+               " [", round(perceived_sim_p1$conf.int[1], 3),
+               " - ", 
+               round(perceived_sim_p1$conf.int[2], 3) ,"]"),
+        round(perceived_sim_p1$p.value, 3)),
+      c("P2-perceived", var,
+        paste0(round(perceived_sim_p2$estimate, 3),
+               " [", round(perceived_sim_p2$conf.int[1], 3),
+               " - ", 
+               round(perceived_sim_p2$conf.int[2], 3) ,"]"),
+        round(perceived_sim_p2$p.value, 3))
+    )
+    
+    # create data frame with all perception pairs
+    sim_list <- as.data.frame(
+      matrix(c("actual",           "P1-perceived",
+               "actual",           "P2-perceived",
+               "P1-perceived", "P2-perceived"),
+             ncol = 2, byrow = TRUE)
+    )
+    
+    # store current personality variable
+    sim_list$personality <- var
+    
+    # fisher's z transformed of each similarity
+    actual_z <- fisherz(rho = actual_sim$estimate)
+    P1_z <- fisherz(rho = perceived_sim_p1$estimate)
+    P2_z   <- fisherz(rho = perceived_sim_p2$estimate)
+    
+    # resolve infinity problem
+    if(actual_z == Inf){actual_z <- 0.99999}
+    if(P1_z == Inf){P1_z <- 0.99999}
+    if(P2_z == Inf){P2_z <- 0.99999}
+    if(actual_z == -Inf){actual_z <- -0.99999}
+    if(P1_z == -Inf){P1_z <- -0.99999}
+    if(P2_z == -Inf){P2_z <- -0.99999}
+    
+    # sample sizes
+    actual_n <- actual_sim$parameter + 2
+    P1_n <- perceived_sim_p1$parameter + 2
+    P2_n   <- perceived_sim_p2$parameter + 2
+    
+    # z tests
+    sim_list[1, "z_stat"] <- (actual_z - P1_z) / 
+      sqrt( (1/(actual_n - 3)) + (1/(P1_n - 3)) )
+    sim_list[2, "z_stat"] <- (actual_z - P2_z) / 
+      sqrt( (1/(actual_n - 3)) + (1/(P2_n - 3)) )
+    sim_list[3, "z_stat"] <- (P1_z - P2_z) / 
+      sqrt( (1/(P1_n - 3)) + (1/(P2_n - 3)) )
+    
+    # significance
+    sim_list$sig <- abs(sim_list$z_stat) > 1.96
+    
+    # rbind current sim_list to compare_df
+    compare_df <- rbind(
+      compare_df,
+      sim_list
+    )
+
+  } # END for var LOOP
+  
+  # return results
+  names(similarity_df) <- c("similarity", "personality",
+                            "correlation", "p-value")
+  return(list(similarity_df = similarity_df,
+              compare_df = compare_df))
+} # END h2_function
+
+## Hypothesis 3: Dynamic Assortment --------------------------------------------
+h3_function <- function(
   # character vector of variables
   var_list,
   
@@ -172,7 +323,7 @@ h2_function <- function(
   
   # loop through variables
   for (ivar in var_list) {
-    
+
     # sd calculation
     p1_sd <- tapply(X = .data[.data$P_num == 1, ivar],
                     INDEX = .data[.data$P_num == 1,"Couple_ID"],
@@ -220,8 +371,48 @@ h2_function <- function(
     # mssd correlation  
     mssd_cor <- cor.test(p1_mssd, p2_mssd, method = "pearson",
                          alternative = "two.sided")
+    
+    # profile correlation
+    #   initialize vectors of r, p, and n
+    r_vector <- p_vector <- n_vector <- rep(NA, length(unique(.data$Couple_ID)))
 
-    # store values
+    #   loop through couple
+    for(idxcouple in 1:length(unique(.data$Couple_ID))) {
+      
+      # store current couple ID
+      icouple <- unique(.data$Couple_ID)[idxcouple]
+      
+      # extract vectors of shared time points
+      current_couple <- .data %>% filter(Couple_ID == icouple) %>%
+        select(time_idx, P_num, !!sym(ivar)) %>%
+        na.omit()
+      common_time <- names(table(current_couple$time_idx)[
+        table(current_couple$time_idx) == 2])
+      p1_df <- current_couple %>% 
+        filter(time_idx %in% common_time & P_num == 1) %>%
+        arrange(time_idx) 
+      p2_df <- current_couple %>% 
+        filter(time_idx %in% common_time & P_num == 2) %>%
+        arrange(time_idx)
+      common_time <- intersect(p1_df$time_idx, p2_df$time_idx)
+      p1_vector <- p1_df %>%
+        filter(time_idx %in% common_time) %>%
+        pull(!!sym(ivar))
+      p2_vector <- p2_df %>%
+        filter(time_idx %in% common_time) %>%
+        pull(!!sym(ivar))
+      
+      # calculate profile correlations
+      prof_cor <- cor.test(p1_vector, p2_vector, method = "pearson",
+                           alternative = "two.sided")
+      
+      # store values in results vectors
+      r_vector[idxcouple] <- round(prof_cor$estimate, 3)
+      p_vector[idxcouple] <- round(prof_cor$p.value, 3)
+      n_vector[idxcouple] <- prof_cor$parameter + 2
+    } # END for idxcouple LOOP
+
+    # store values for results table
     cor_tab <- rbind(cor_tab, c(ivar,
                                 # sd
                                 round(sd_cor$estimate, 3), 
@@ -237,15 +428,30 @@ h2_function <- function(
                                 round(mssd_cor$estimate, 3), 
                                 round(mssd_cor$p.value, 3),
                                 round(mssd_cor$conf.int[1], 3),
-                                round(mssd_cor$conf.int[2], 3)))
+                                round(mssd_cor$conf.int[2], 3),
+                                # prof cor
+                                round(mean(r_vector, na.rm=T), 3),
+                                round(mean(p_vector[p_vector > 0] < .05,
+                                           na.rm=T), 3),
+                                round(mean(n_vector), 3)))
     
-    # store momentary indices
+    # store momentary indices for all participants in dataframe
     within_df$sd   <- c(p1_sd, p2_sd)
     within_df$rvi  <- c(p1_rvi, p2_rvi)
     within_df$mssd <- c(p1_mssd, p2_mssd)
     names(within_df)[names(within_df) == "sd"]   <- paste0(ivar, "_sd")
     names(within_df)[names(within_df) == "rvi"]  <- paste0(ivar, "_rvi")
     names(within_df)[names(within_df) == "mssd"] <- paste0(ivar, "_mssd")
+    
+    # store within-couple correlations in dataframe
+    within_df$cor <- rep(r_vector, times = 2)
+    within_df$z   <- rep(fisherz(rho = r_vector), times = 2)
+    within_df$p   <- rep(p_vector, times = 2)
+    within_df$n   <- rep(n_vector, times = 2)
+    names(within_df)[names(within_df) == "cor"]   <- paste0(ivar, "_r")
+    names(within_df)[names(within_df) == "z"]     <- paste0(ivar, "_z")
+    names(within_df)[names(within_df) == "p"]     <- paste0(ivar, "_p")
+    names(within_df)[names(within_df) == "n"]     <- paste0(ivar, "_n")
 
   } # END for ivar LOOP
   
@@ -253,16 +459,16 @@ h2_function <- function(
   names(cor_tab) <- c("variable",
                       "r SD", "p SD", "LL SD", "UL SD",
                       "r RVI", "p RVI", "LL RVI", "UL RVI",
-                      "r MSSD", "p MSSD", "LL MSSD", "UL MSSD")
+                      "r MSSD", "p MSSD", "LL MSSD", "UL MSSD",
+                      "r avg", "proportion sig", "n avg")
   
   # return results
   return(list(cor_tab = cor_tab,
               within_df = within_df))
-} # END h2_function DEF
+} # END h3_function DEF
 
-
-## Hypothesis 3: Baseline Benefits ---------------------------------------------
-h3_function <- function(
+## Hypothesis 4: Baseline Benefits ---------------------------------------------
+h4_function <- function(
   
   # character vector of personality variables
   var_list, 
@@ -452,9 +658,9 @@ h3_function <- function(
               difference_tab = difference_tab,
               profile_tab = profile_tab))
   
-} # END h3_function
+} # END h4_function
 
-## Hypothesis 5: APIM ----------------------------------------------------------
+## Hypothesis 5+6: APIM ----------------------------------------------------------
 h5_function <- function(
   # character vector of all personality variables  
   var_list,
@@ -741,129 +947,10 @@ h5_function <- function(
               perceived_p2 = est_df_p2))
 } # END h5_function
 
-
-
-## Hypothesis 6: Perceived vs. Actual ------------------------------------------
-h6_function <- function(
-  # character vector of all personality variables with self/other reports
-  #   naming convention: self_var and partner_var
-  perception_list,
+## Exploratory Analysis: Coupled Damped Oscillator -----------------------------
+rties_function <- function() {
   
-  # analytic dataframe
-  .data) {
-  
-  # create dataframes to store results
-  #   similarity_df: raw actual and perceived similarity
-  #   compare_df: comparison between actual and perceived similarity
-  similarity_df <- compare_df <- data.frame()
-  
-  # sort data to make sure couple id align
-  .data <- .data %>%
-    arrange(Couple_ID)
-  
-  # loop through self/other variables
-  for (var in perception_list) {
-    
-    # extract vectors from data
-    #   p1self:    P1's self-perception
-    #   p1partner: P1's perception of their partner
-    #   p2self:    P2's self-perception
-    #   p2partner: P2's perception of their partner
-    p1self    <- .data[.data$P_num == 1, paste0("self_", var), drop = T]
-    p1partner <- .data[.data$P_num == 1, paste0("partner_", var), drop = T]
-    p2self    <- .data[.data$P_num == 2, paste0("self_", var), drop = T]
-    p2partner <- .data[.data$P_num == 2, paste0("partner_", var), drop = T]
-    
-    # compute correlation and p-value
-    #   actual_sim: between both partners' self-reports
-    #   perceived_sim_p1: P1's self perception and 
-    #                     P1's perception of P2
-    #   perceived_sim_p2: P2's self perception and 
-    #                     P2's perception of P1
-    actual_sim <- cor.test(p1self, p2self, method = "pearson",
-                           alternative = "two.sided")    
-    perceived_sim_p1 <- cor.test(p1self, p1partner, method = "pearson",
-                                 alternative = "two.sided")    
-    perceived_sim_p2 <- cor.test(p2self, p2partner, method = "pearson",
-                                 alternative = "two.sided")    
-    # store cor, ci, pval
-    similarity_df <- rbind(
-      similarity_df,
-      # actual sim
-      c("actual", var, 
-        paste0(round(actual_sim$estimate, 3),
-               " [", round(actual_sim$conf.int[1], 3),
-               " - ", 
-               round(actual_sim$conf.int[2], 3) ,"]"),
-        round(actual_sim$p.value, 3)),
-      c("P1-perceived", var,
-        paste0(round(perceived_sim_p1$estimate, 3),
-               " [", round(perceived_sim_p1$conf.int[1], 3),
-               " - ", 
-               round(perceived_sim_p1$conf.int[2], 3) ,"]"),
-        round(perceived_sim_p1$p.value, 3)),
-      c("P2-perceived", var,
-        paste0(round(perceived_sim_p2$estimate, 3),
-               " [", round(perceived_sim_p2$conf.int[1], 3),
-               " - ", 
-               round(perceived_sim_p2$conf.int[2], 3) ,"]"),
-        round(perceived_sim_p2$p.value, 3))
-    )
-    
-    # create data frame with all perception pairs
-    sim_list <- as.data.frame(
-      matrix(c("actual",           "P1-perceived",
-               "actual",           "P2-perceived",
-               "P1-perceived", "P2-perceived"),
-             ncol = 2, byrow = TRUE)
-    )
-    
-    # store current personality variable
-    sim_list$personality <- var
-    
-    # fisher's z transformed of each similarity
-    actual_z <- fisherz(rho = actual_sim$estimate)
-    P1_z <- fisherz(rho = perceived_sim_p1$estimate)
-    P2_z   <- fisherz(rho = perceived_sim_p2$estimate)
-    
-    # resolve infinity problem
-    if(actual_z == Inf){actual_z <- 0.99999}
-    if(P1_z == Inf){P1_z <- 0.99999}
-    if(P2_z == Inf){P2_z <- 0.99999}
-    if(actual_z == -Inf){actual_z <- -0.99999}
-    if(P1_z == -Inf){P1_z <- -0.99999}
-    if(P2_z == -Inf){P2_z <- -0.99999}
-    
-    # sample sizes
-    actual_n <- actual_sim$parameter + 2
-    P1_n <- perceived_sim_p1$parameter + 2
-    P2_n   <- perceived_sim_p2$parameter + 2
-    
-    # z tests
-    sim_list[1, "z_stat"] <- (actual_z - P1_z) / 
-      sqrt( (1/(actual_n - 3)) + (1/(P1_n - 3)) )
-    sim_list[2, "z_stat"] <- (actual_z - P2_z) / 
-      sqrt( (1/(actual_n - 3)) + (1/(P2_n - 3)) )
-    sim_list[3, "z_stat"] <- (P1_z - P2_z) / 
-      sqrt( (1/(P1_n - 3)) + (1/(P2_n - 3)) )
-    
-    # significance
-    sim_list$sig <- abs(sim_list$z_stat) > 1.96
-    
-    # rbind current sim_list to compare_df
-    compare_df <- rbind(
-      compare_df,
-      sim_list
-    )
-
-  } # END for var LOOP
-  
-  # return results
-  names(similarity_df) <- c("similarity", "personality",
-                            "correlation", "p-value")
-  return(list(similarity_df = similarity_df,
-              compare_df = compare_df))
-} # END h6_function
+}
 
 # Cleaning Functions -----------------------------------------------------------
 
@@ -1186,3 +1273,40 @@ rvi_calc <- function(vector, min, max){
   }
   return(rsd)
 }
+
+# function to plot raw time series data
+# from rties package
+# adapted to change colors
+plot_timeseries <- function(
+    basedata, dyadId, obs_name, dist_name, time_name, dist0name = NULL, 
+    dist1name = NULL, plot_obs_name = NULL, printPlots = T) {
+  
+  basedata <- basedata[, c(dyadId, obs_name, dist_name, time_name)]
+  names(basedata) <- c("dyad", "obs", "dist", "time")
+  if (!is.numeric(basedata$dist)) {
+    stop("the distinguishing variable must be a 0/1 numeric variable")
+    }
+  if (is.null(dist0name)) {
+    dist0name <- "dist0"
+    }
+  if (is.null(dist1name)) {
+    dist1name <- "dist1"
+    }
+  if (is.null(plot_obs_name)) {
+    plot_obs_name <- "obs"
+    }
+  dist <- NULL
+  plots <- lattice::xyplot(
+    obs ~ time | as.factor(dyad), data = basedata, 
+    group = dist, type = c("l"), ylab = plot_obs_name, 
+    col = c("#710c0c", "#E69F00"),
+    lty = c("longdash", "solid"),
+    key = list(space = "right", text = list(c(dist1name, dist0name)),
+               col = c("#710c0c", "#E69F00"),
+               lty = c("longdash", "solid")), as.table = T,
+    layout = c(3, 3))
+  if (printPlots == T) {
+    print(plots)
+  }
+  return(plots)
+  }
