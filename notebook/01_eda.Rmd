@@ -337,18 +337,20 @@ apa.cor.table(baseline %>%
                 select(
                   paste0("self_", 
                       c("pa", "na",
-                        "agree", "compa", "polit", 
-                        "consci", "indus", "order", 
-                        "extra", "assert", "enthu", 
-                        "neuro", "volat", "withd", 
-                        "open", "intel", "opena")),
+                        "agree", 
+                        "consci", 
+                        "extra", 
+                        "neuro", 
+                        "open")),
+                  "csi_overall",
                   paste0("partner_", 
                       c("pa", "na",
-                        "agree", "compa", "polit", 
-                        "consci", "indus", "order", 
-                        "extra", "assert", "enthu", 
-                        "neuro", "volat", "withd", 
-                        "open", "intel", "opena"))
+                        "agree", 
+                        "consci", 
+                        "extra", 
+                        "neuro", 
+                        "open")),
+                  "csi_overall"
                 ),
               filename = paste0(here(), "/results/cormat_p1.doc"))
 apa.cor.table(baseline %>% 
@@ -356,18 +358,20 @@ apa.cor.table(baseline %>%
                 select(
                   paste0("self_", 
                       c("pa", "na",
-                        "agree", "compa", "polit", 
-                        "consci", "indus", "order", 
-                        "extra", "assert", "enthu", 
-                        "neuro", "volat", "withd", 
-                        "open", "intel", "opena")),
+                        "agree", 
+                        "consci", 
+                        "extra", 
+                        "neuro", 
+                        "open")),
+                  "csi_overall",
                   paste0("partner_", 
                       c("pa", "na",
-                        "agree", "compa", "polit", 
-                        "consci", "indus", "order", 
-                        "extra", "assert", "enthu", 
-                        "neuro", "volat", "withd", 
-                        "open", "intel", "opena"))
+                        "agree", 
+                        "consci", 
+                        "extra", 
+                        "neuro", 
+                        "open")),
+                  "csi_overall"
                 ),
               filename = paste0(here(), "/results/cormat_p2.doc"))
 ```

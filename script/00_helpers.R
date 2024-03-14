@@ -1279,7 +1279,7 @@ rvi_calc <- function(vector, min, max){
 # adapted to change colors
 plot_timeseries <- function(
     basedata, dyadId, obs_name, dist_name, time_name, dist0name = NULL, 
-    dist1name = NULL, plot_obs_name = NULL, printPlots = T) {
+    dist1name = NULL, plot_obs_name = NULL, printPlots = T, .title = NULL) {
   
   basedata <- basedata[, c(dyadId, obs_name, dist_name, time_name)]
   names(basedata) <- c("dyad", "obs", "dist", "time")
@@ -1304,7 +1304,8 @@ plot_timeseries <- function(
     key = list(space = "right", text = list(c(dist1name, dist0name)),
                col = c("#710c0c", "#E69F00"),
                lty = c("longdash", "solid")), as.table = T,
-    layout = c(3, 3))
+    layout = c(3, 3),
+    main = .title)
   if (printPlots == T) {
     print(plots)
   }

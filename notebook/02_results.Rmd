@@ -19,6 +19,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 options(digits = 3)
 
 libraries <- c("here",         # directory access
+               "rempsyc",      # simple slope analysis
                "rties",        # coupled damped oscillator
                "psych",        # fisher's z
                "Hmisc",        # correlation matrix
@@ -69,7 +70,7 @@ head(esm %>% filter(Participant_ID == "1002001") %>% arrange(time_idx)) %>%
 
 # retain only analytic variables
 baseline <- baseline %>%
-  select(Couple_ID, P_num,
+  select(Couple_ID, P_num, duration,
          age, sex, gender, sexuality, edu, ses, politics, religion, race_cat,
          panas_self_1:panas_self_20,
          self_neuro:partner_opena)
@@ -239,6 +240,26 @@ h4_results$profile_tab %>%
   scroll_box(height = "300px")
 ```
 
+#### Simple slope analysis for significant interaction effects
+
+```{r h4-ss}
+# Negative Affect - P2 Satisfaction
+ss_wide_df <- baseline %>%
+  pivot_wider(id_cols = "Couple_ID",
+              names_from = "P_num",
+              values_from = c("self_na", "csi_overall"))
+nice_slopes(
+  data = ss_wide_df,
+  response = "csi_overall_2",
+  predictor = "self_na_2",
+  moderator = "self_na_1") %>%
+  knitr::kable(
+    caption = "Simple slope analysis"
+  ) %>% 
+  kableExtra::kable_styling()
+```
+
+
 ## Hypothesis 5: APIM Actual Similarities
 
 ```{r h5, warning = F}
@@ -378,6 +399,25 @@ fluctuation_tab %>%
   scroll_box(height = "300px")
 ```
 
+#### Simple slope analysis for significant interaction effects
+
+```{r h7-ss}
+# openness rvi - P2 Satisfaction
+ss_wide_df <- baseline %>%
+  pivot_wider(id_cols = "Couple_ID",
+              names_from = "P_num",
+              values_from = c("tipi_open_rvi", "csi_overall"))
+nice_slopes(
+  data = ss_wide_df,
+  response = "csi_overall_2",
+  predictor = "tipi_open_rvi_2",
+  moderator = "tipi_open_rvi_1") %>%
+  knitr::kable(
+    caption = "Simple slope analysis"
+  ) %>% 
+  kableExtra::kable_styling()
+```
+
 # Exploratory Model: Coupled Damped Oscillator
 
 ```{r rties}
@@ -405,14 +445,14 @@ rties_dat <- rties_dat[!duplicated(rties_dat[c("Couple_ID", "P_num", "time_idx")
 # fix time_idx to start at 1
 rties_dat$time_idx <- rties_dat$time_idx + 1
 
-# use rties::dataPrep()
-prepped_dat <- dataPrep(basedata = rties_dat, 
-                        dyadId = "couple", personId = "person",
-                        obs_name = "tipi_neuro", dist_name = "P_num",
-                        time_name = "time_idx")
-
-
-## test taus, embeds, and delta
+## use rties::dataPrep()
+#prepped_dat <- dataPrep(basedata = rties_dat, 
+#                        dyadId = "couple", personId = "person",
+#                        obs_name = "tipi_neuro", dist_name = "P_num",
+#                        time_name = "time_idx")
+#
+#
+### test taus, embeds, and delta
 ## not successful
 #taus <- c(4,5)
 #embeds <- c(3,4,5)
@@ -420,10 +460,16 @@ prepped_dat <- dataPrep(basedata = rties_dat,
 #
 #derivs <- estDerivs(prepData=prepped_dat, taus=taus, embeds=embeds, delta=delta, 
 #                    idConvention=500)
+```
 
+### Dynamic Dyadic Plots
+
+Here are dynamic dyadic plots of both partners from a random selection of couples who provided at least 28 shared datapoints (80% completion rate).
+
+```{r plots-random}
 # random selection of couples with at least 28 shared datapoints
 set.seed(202403)
-id_list <- baseline %>% filter(tipi_open_n > 28) %>%
+id_list <- baseline %>% filter(tipi_open_n >= 28) %>%
   pull(Couple_ID) %>%
   unique()
 id_random <- sample(id_list, size = 9)
@@ -503,3 +549,98 @@ plot_timeseries(basedata=rties_dat %>% filter(Couple_ID %in% id_random),
                 plot_obs_name="Relationship Satisfaction", printPlots = F)
 ```
 
+To further highlight the effects of co-fluctuations in positive affect, here are dynamic dyadic plots of both partners from a random selection of couples who provided at least 28 shared datapoints (80% completion rate), separated by high and low (top and bottom 20%) relationship satisfaction.
+
+```{r plots-csi}
+set.seed(202403)
+baseline_wide <- baseline %>%
+  pivot_wider(id_cols = "Couple_ID",
+              names_from = "P_num",
+              values_from = c("tipi_open_n", "csi_overall"))
+thresholds <- quantile(baseline$csi_overall, probs = c(0.20, 0.80))
+high_list <- baseline_wide %>% 
+  filter(
+    tipi_open_n_1 >= 28,
+    csi_overall_1 >= thresholds[2],
+    csi_overall_2 >= thresholds[2]) %>%
+  pull(Couple_ID) %>%
+  unique()
+high_random <- sample(high_list, size = 9)
+
+low_list <- baseline_wide %>% 
+  filter(
+    tipi_open_n_1 >= 28,
+    csi_overall_1 <= thresholds[1],
+    csi_overall_2 <= thresholds[1]) %>%
+  pull(Couple_ID) %>%
+  unique()
+low_random <- sample(low_list, size = 9)
+
+plot_timeseries(
+  basedata=rties_dat %>% filter(Couple_ID %in% high_random), 
+  dyad="couple", 
+  obs_name="mpa", 
+  dist_name="P_num", 
+  time_name="time_idx", 
+  dist0name="P2", dist1name= "P1", 
+  plot_obs_name="Positive Affect", printPlots = F,
+  .title = "Co-Fluctuations on Positive Affect for High Satisfaction Couples")
+
+plot_timeseries(
+  basedata=rties_dat %>% filter(Couple_ID %in% low_random), 
+  dyad="couple", 
+  obs_name="mpa", 
+  dist_name="P_num", 
+  time_name="time_idx", 
+  dist0name="P2", dist1name= "P1", 
+  plot_obs_name="Positive Affect", printPlots = F,
+  .title = "Co-Fluctuations on Positive Affect for Low Satisfaction Couples")
+```
+
+To further highlight the effects of co-fluctuations in positive affect, here are dynamic dyadic plots of both partners from a random selection of couples who provided at least 28 shared datapoints (80% completion rate), separated by high and low (top and bottom 20%) relationship duration
+
+```{r plots-duration}
+set.seed(202403)
+baseline_wide <- baseline %>%
+  pivot_wider(id_cols = "Couple_ID",
+              names_from = "P_num",
+              values_from = c("tipi_open_n", "duration"))
+thresholds <- quantile(baseline$duration, probs = c(0.20, 0.80))
+high_list <- baseline_wide %>% 
+  filter(
+    tipi_open_n_1 >= 28,
+    duration_1 >= thresholds[2],
+    duration_2 >= thresholds[2]) %>%
+  pull(Couple_ID) %>%
+  unique()
+high_random <- sample(high_list, size = 9)
+
+low_list <- baseline_wide %>% 
+  filter(
+    tipi_open_n_1 >= 28,
+    duration_1 <= thresholds[1],
+    duration_2 <= thresholds[1]) %>%
+  pull(Couple_ID) %>%
+  unique()
+low_random <- sample(low_list, size = 9)
+
+plot_timeseries(
+  basedata=rties_dat %>% filter(Couple_ID %in% high_random), 
+  dyad="couple", 
+  obs_name="mpa", 
+  dist_name="P_num", 
+  time_name="time_idx", 
+  dist0name="P2", dist1name= "P1", 
+  plot_obs_name="Positive Affect", printPlots = F,
+  .title = "Co-Fluctuations on Positive Affect for Long-Term Couples")
+
+plot_timeseries(
+  basedata=rties_dat %>% filter(Couple_ID %in% low_random), 
+  dyad="couple", 
+  obs_name="mpa", 
+  dist_name="P_num", 
+  time_name="time_idx", 
+  dist0name="P2", dist1name= "P1", 
+  plot_obs_name="Positive Affect", printPlots = F,
+  .title = "Co-Fluctuations on Positive Affect for Short-Term Couples")
+```
